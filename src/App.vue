@@ -3,23 +3,34 @@
     <Button v-if="!state.begun" @click="fetchLessons">Begin</Button>
 
     <Async v-if="state.begun" :loading="state.loading">
-      <div class="text-xs h-[480px] w-[640px] bg-neutral-800 rounded-2xl flex flex-col p-4 text-neutral-400" @click="next">
-        <div class="p-4">
-          <div class="text-sm leading-relaxed text-white ">
-            {{ rustLesson }}
+      <div
+        class="text-xs h-[600px] max-h-[600px] w-[640px] bg-neutral-800 rounded-2xl flex flex-col p-4 text-neutral-400"
+        @click="next"
+        @contextmenu.prevent="previous"
+      >
+        <div class="flex flex-row grow overflow-y-auto">
+          <div class="flex flex-col w-full">
+            <div class="p-4">
+              <div class="text-base leading-relaxed text-white">
+                {{ rustLesson }}
+              </div>
+            </div>
+            <div v-html="rustCodeExample"></div>
+            <div v-html="typescriptCodeExample"></div>
           </div>
         </div>
-        <div class="p-4 bg-neutral-900 m-4 rounded-lg">
-          <code class="language-rust" v-html="rustCodeExample"> </code>
-        </div>
-        <div class="p-4 bg-neutral-900 m-4 rounded-lg">
-          <code class="language-typescript" v-html="typescriptCodeExample"></code>
-        </div>
 
-        <div class="flex flex-row gap-x-4 w-full p-4">
-          <Badge class="cursor-pointer" v-for="category in state.collection[state.index].categorySuggestions" @click="fetchLessons(false, category)">
-            {{ category }}
-          </Badge>
+        <div class="flex flex-row items-center justify-end p-4">
+          <div class="flex flex-row flex-wrap gap-x-4 w-full p-4">
+            <Badge
+              class="cursor-pointer"
+              v-for="category in state.collection[state.index].categorySuggestions"
+              @click="fetchLessons(false, category)"
+            >
+              {{ category }}
+            </Badge>
+          </div>
+          <div class="text-sm">{{ state.index + 1 }}/{{ state.collection.length }}</div>
         </div>
       </div>
     </Async>
@@ -27,6 +38,10 @@
 </template>
 
 <script setup lang="ts">
+
+// TODO: Error state
+// TODO: Refactor into component set (LessonCard, LessonCardCollection)
+// IDEA: Tree structure based on categories so you can navigate between sets of related cards
 import { useOpenAI } from "./modules/open-ai";
 import Button from "./components/primitives/Button.vue";
 import { computed, reactive } from "vue";
@@ -41,10 +56,10 @@ import Badge from "./components/ui/badge/Badge.vue";
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("rust", rust);
 
-const {start, more, category } = useOpenAI({
-    apiKey: import.meta.env.VITE_OPENAI_API_KEY as string,
-    project: import.meta.env.VITE_OPENAI_PROJECT as string,
-  });
+const { start, more, category } = useOpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY as string,
+  project: import.meta.env.VITE_OPENAI_PROJECT as string,
+});
 
 const state = reactive({
   loading: false,
@@ -55,27 +70,20 @@ const state = reactive({
 
 async function fetchLessons(continued: boolean = false, scope?: string) {
   state.begun = true;
-  
 
   state.loading = true;
 
   let func: Function;
 
-  if(scope) {
+  if (scope) {
     func = async () => category(scope);
-  }
-  else if(continued) {
+  } else if (continued) {
     func = async () => more(5);
-  }
-  else {
+  } else {
     func = start;
   }
 
   const completion = await func();
-
-  console.log(completion);
-
-  console.log(completion.content);
   const json = JSON.parse(completion.content as string);
 
   const { create } = lessonCollectionFactory();
@@ -89,7 +97,6 @@ const rustCodeExample = computed(() => formatRust(state.collection[state.index].
 const typescriptCodeExample = computed(() => formatTypescript(state.collection[state.index].typescriptCodeExample));
 
 async function next() {
-  console.log("next");
   const nextIndex = state.index + 1;
   if (nextIndex === state.collection.length) {
     await fetchLessons(true);
@@ -97,30 +104,34 @@ async function next() {
   state.index = nextIndex;
 }
 
-function formatRust(code: string) {
-  // Preserve line breaks and indentation
-  const lines = code.split('\n');
-  const formattedLines = lines.map(line => {
-    const trimmedLine = line.trimStart();
-    const indentation = line.length - trimmedLine.length;
-    const highlightedLine = hljs.highlight(trimmedLine, { language: "rust" }).value;
-    return `<span class="line-indent" style="padding-left: ${indentation * 0.25}rem;">${highlightedLine}</span>`;
-  });
+function previous() {
+  state.index = Math.max(0, state.index - 1);
+}
 
-  return formattedLines.join('\n');return hljs.highlight(code, { language: "rust" }).value;
+function formatCode(code: string, language: string) {
+  const highlightedCode = hljs.highlight(code, { language }).value;
+  return `<pre class="p-4 bg-neutral-900 overflow-x-auto m-4 rounded-lg text-sm"><code class="language-${language}">${highlightedCode}</code></pre>`;
+}
+
+function formatRust(code: string) {
+  return formatCode(code, "rust");
 }
 
 function formatTypescript(code: string) {
-  const lines = code.split('\n');
-  const formattedLines = lines.map(line => {
-    const trimmedLine = line.trimStart();
-    const indentation = line.length - trimmedLine.length;
-    const highlightedLine = hljs.highlight(trimmedLine, { language: "typescript" }).value;
-    return `<span class="line-indent" style="padding-left: ${indentation * 0.25}rem;">${highlightedLine}</span>`;
-  });
-
-  return formattedLines.join('\n');
+  return formatCode(code, "typescript");
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+pre {
+  white-space: pre;
+  word-wrap: normal;
+  overflow-x: auto;
+}
+
+code {
+  display: block;
+  padding: 1em;
+  overflow-x: auto;
+}
+</style>
